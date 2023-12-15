@@ -18,7 +18,6 @@ import org.koitharu.kotatsu.parsers.model.MangaTag
 import org.koitharu.kotatsu.parsers.model.RATING_UNKNOWN
 import org.koitharu.kotatsu.parsers.model.SortOrder
 import org.koitharu.kotatsu.parsers.util.SuspendLazy
-import org.koitharu.kotatsu.parsers.util.byte2HexFormatted
 import org.koitharu.kotatsu.parsers.util.domain
 import org.koitharu.kotatsu.parsers.util.generateUid
 import org.koitharu.kotatsu.parsers.util.json.getBooleanOrDefault
@@ -39,8 +38,8 @@ class VizParser(context: MangaLoaderContext) : MangaParser(context, MangaSource.
 	override val configKeyDomain = ConfigKey.Domain("viz.com")
 
 	override val availableSortOrders: Set<SortOrder> = setOf(
-		SortOrder.ALPHABETICAL,
-		SortOrder.UPDATED
+		SortOrder.UPDATED,
+		SortOrder.ALPHABETICAL
 	)
 
 	private val apiUrl get() = "https://api.$domain"
@@ -81,17 +80,14 @@ class VizParser(context: MangaLoaderContext) : MangaParser(context, MangaSource.
 						}
 				}
 			}
-		}.awaitAll().flatten()
+		}.awaitAll().flatten().sortedBy { it.getString("title") }
 	}
 
 	private fun getServiceType(serviceId: String): String {
 		return when (serviceId) {
 			"1" -> "vizmanga"
 			"3" -> "shonenjump"
-			else -> {
-				assert(false) { "unknown service passed to getServiceType" }
-				"vizmanga"
-			}
+			else -> throw Exception("Unknown service")
 		}
 	}
 
@@ -105,9 +101,6 @@ class VizParser(context: MangaLoaderContext) : MangaParser(context, MangaSource.
 						freeMangaSeries = freeMangaSeries.sortedByDescending {
 							it.getIntOrDefault("chapter_latest_pub_date", 0)
 						}
-					}
-					SortOrder.ALPHABETICAL -> {
-						freeMangaSeries = freeMangaSeries.sortedBy { it.getString("title") }
 					}
 					else -> {}
 				}
@@ -186,7 +179,7 @@ class VizParser(context: MangaLoaderContext) : MangaParser(context, MangaSource.
 						url = url,
 						name = "Chapter $chapterNumber",
 						number = chapterNumber.toFloat().toInt(),
-						branch = "English",
+						branch = null,
 						scanlator = null,
 						source = source,
 						uploadDate = getEpoch(it.getString("publication_date"))
@@ -209,10 +202,10 @@ class VizParser(context: MangaLoaderContext) : MangaParser(context, MangaSource.
 	private val instanceId by lazy {
 		val byteArray = ByteArray(8)
 		SecureRandom().nextBytes(byteArray)
-		byteArray.byte2HexFormatted()
+		byteArray.joinToString("") { "%02x".format(it) }
 	}
 
-	private fun commonFormPayload(serviceId: String): MutableMap<String, String> = mutableMapOf(
+	private fun commonFormPayload(serviceId: String) = mutableMapOf(
 		Pair("instance_id", instanceId),
 		Pair("device_token", instanceId),
 		Pair("device_id", "4"),
@@ -237,9 +230,10 @@ class VizParser(context: MangaLoaderContext) : MangaParser(context, MangaSource.
 		}
 
 		return (0..pages).map {
+			val url = "$id#$it#$serviceId"
 			MangaPage(
-				id = generateUid(it.toString()),
-				url = "$id#$it#$serviceId",
+				id = generateUid(url),
+				url = url,
 				preview = null,
 				source = source
 			)
